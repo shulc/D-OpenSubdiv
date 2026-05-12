@@ -63,6 +63,13 @@ int  osdc_topology_input_edge_count(const osdc_topology_t* t);
 /// tightly packed). Length = 2 * osdc_topology_input_edge_count.
 void osdc_topology_input_edges(const osdc_topology_t* t, int* out_verts);
 
+/// For each input edge, the index of its edge-point at the first
+/// refinement level. Length = osdc_topology_input_edge_count. At
+/// max_level=1 these are the limit-mesh vert indices — useful for
+/// selective-refine callers that need to insert OSD's edge-point
+/// into un-refined adjacent faces (T-junction widening).
+void osdc_topology_input_edge_children(const osdc_topology_t* t, int* out_verts);
+
 /// Evaluate the limit-surface positions for the current cage. One
 /// sparse matrix-vector product; safe to call many times per second.
 ///

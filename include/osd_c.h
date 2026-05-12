@@ -90,6 +90,18 @@ int  osdc_topology_input_edge_count(const osdc_topology_t* t);
 // table if you need a cage-edge index.
 void osdc_topology_input_edges(const osdc_topology_t* t, int* out_verts);
 
+// For each input (level-0) edge, the index of its edge-point at the
+// FIRST refinement level. Output length = osdc_topology_input_edge_count.
+// At max_level=1 these indices ARE the limit-mesh vert indices (the
+// only level OSD produced). For max_level>1 they're intermediate-
+// level indices and most callers don't need them.
+//
+// Used by selective-refinement callers (subdivide-selected) to insert
+// edge-point verts into adjacent un-refined faces — preserves a
+// manifold result without T-junctions across the boundary between
+// the refined subset and the rest of the mesh.
+void osdc_topology_input_edge_children(const osdc_topology_t* t, int* out_verts);
+
 // Apply the cached stencil table to `cage_xyz` and write limit-surface
 // vertex positions into `out_xyz`. Both buffers are tightly packed
 // triples (xyz, xyz, ...). One sparse SpMV under the hood — this is

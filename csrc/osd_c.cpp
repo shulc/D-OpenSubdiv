@@ -39,6 +39,7 @@ struct osdc_topology {
     std::vector<int>          limit_edge_verts;   // 2 limit-vert idx per edge
     std::vector<int>          edge_origins;
     std::vector<int>          input_edge_verts;   // 2 input-vert idx per cage edge
+    std::vector<int>          input_edge_children;// level-1 vert idx per cage edge (edge-point)
 };
 
 extern "C" osdc_topology_t* osdc_topology_create(
@@ -135,6 +136,19 @@ extern "C" osdc_topology_t* osdc_topology_create(
         Far::ConstIndexArray ev = cage.GetEdgeVertices(e);
         h->input_edge_verts.push_back(ev[0]);
         h->input_edge_verts.push_back(ev[1]);
+    }
+
+    // Edge-point child verts at level 1 — one per input edge. GetEdgeChildVertex
+    // returns the index of the vert that bisects the edge at the next level.
+    // For max_level==1 this is the limit-mesh vert; deeper refinements yield an
+    // intermediate-level index that callers usually don't need.
+    h->input_edge_children.reserve(neIn);
+    if (max_level >= 1) {
+        for (int e = 0; e < neIn; ++e) {
+            h->input_edge_children.push_back(cage.GetEdgeChildVertex(e));
+        }
+    } else {
+        h->input_edge_children.resize(neIn, -1);
     }
 
     // ---- Trace-back arrays ----------------------------------------
@@ -275,6 +289,12 @@ extern "C" void osdc_topology_input_edges(const osdc_topology_t* t, int* out_ver
     if (t == nullptr || out_verts == nullptr) return;
     std::memcpy(out_verts, t->input_edge_verts.data(),
                 t->input_edge_verts.size() * sizeof(int));
+}
+
+extern "C" void osdc_topology_input_edge_children(const osdc_topology_t* t, int* out_verts) {
+    if (t == nullptr || out_verts == nullptr) return;
+    std::memcpy(out_verts, t->input_edge_children.data(),
+                t->input_edge_children.size() * sizeof(int));
 }
 
 extern "C" void osdc_evaluate(osdc_topology_t* t,
