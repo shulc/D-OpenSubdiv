@@ -26,6 +26,18 @@ struct osdc_topology {
     Far::StencilTable const*  stencil_table;
     std::vector<int>          limit_face_counts;
     std::vector<int>          limit_face_indices;
+
+    // Trace-back arrays — derived once during topology_create by
+    // walking the parent→child face/vert/edge relations through every
+    // refinement level. Same semantics as vibe3d's SubpatchTrace.
+    //   *_origins[i] == -1  iff element i was introduced by subdivision
+    //                       (face-point / edge-point verts, internal
+    //                       edges of a refined face, no entries for
+    //                       faces since CC subdivides every cage face).
+    std::vector<int>          face_origins;
+    std::vector<int>          vert_origins;
+    std::vector<int>          limit_edge_verts;   // 2 limit-vert idx per edge
+    std::vector<int>          edge_origins;
 };
 
 extern "C" osdc_topology_t* osdc_topology_create(
@@ -96,6 +108,82 @@ extern "C" osdc_topology_t* osdc_topology_create(
             h->limit_face_indices.push_back(vs[i]);
     }
 
+    // Limit-mesh edge list (2 limit-vert indices per edge).
+    int ne = top.GetNumEdges();
+    h->limit_edge_verts.reserve(2 * ne);
+    for (int e = 0; e < ne; ++e) {
+        Far::ConstIndexArray ev = top.GetEdgeVertices(e);
+        h->limit_edge_verts.push_back(ev[0]);
+        h->limit_edge_verts.push_back(ev[1]);
+    }
+
+    // ---- Trace-back arrays ----------------------------------------
+    // Walk parent->child face / vert / edge relationships once per
+    // level. Each pass extends the cage-origin mapping by one level;
+    // after `max_level` passes the mappings point at cage indices
+    // (or -1 for elements introduced by subdivision).
+    //
+    // Face refinement: every child face inherits its parent's cage
+    // index. CC subdivides every cage face, so no -1s appear here.
+    {
+        std::vector<int> curr(refiner->GetLevel(0).GetNumFaces());
+        for (size_t i = 0; i < curr.size(); ++i) curr[i] = (int)i;
+        for (int lvl = 1; lvl <= max_level; ++lvl) {
+            Far::TopologyLevel const& parent = refiner->GetLevel(lvl - 1);
+            Far::TopologyLevel const& child  = refiner->GetLevel(lvl);
+            std::vector<int> next(child.GetNumFaces(), -1);
+            int npf = parent.GetNumFaces();
+            for (int pf = 0; pf < npf; ++pf) {
+                Far::ConstIndexArray ch = parent.GetFaceChildFaces(pf);
+                for (int i = 0; i < ch.size(); ++i)
+                    next[ch[i]] = curr[pf];
+            }
+            curr.swap(next);
+        }
+        h->face_origins = std::move(curr);
+    }
+
+    // Vert refinement: only vert-children inherit the parent vert's
+    // cage index. Face-children (face points) and edge-children (edge
+    // points) are new verts with no cage origin → stay at -1.
+    {
+        std::vector<int> curr(refiner->GetLevel(0).GetNumVertices());
+        for (size_t i = 0; i < curr.size(); ++i) curr[i] = (int)i;
+        for (int lvl = 1; lvl <= max_level; ++lvl) {
+            Far::TopologyLevel const& parent = refiner->GetLevel(lvl - 1);
+            Far::TopologyLevel const& child  = refiner->GetLevel(lvl);
+            std::vector<int> next(child.GetNumVertices(), -1);
+            int npv = parent.GetNumVertices();
+            for (int pv = 0; pv < npv; ++pv) {
+                Far::Index cv = parent.GetVertexChildVertex(pv);
+                if (cv >= 0) next[cv] = curr[pv];
+            }
+            curr.swap(next);
+        }
+        h->vert_origins = std::move(curr);
+    }
+
+    // Edge refinement: only edge-children inherit the parent edge's
+    // cage index. Face-children (interior edges introduced by face
+    // subdivision) stay at -1.
+    {
+        std::vector<int> curr(refiner->GetLevel(0).GetNumEdges());
+        for (size_t i = 0; i < curr.size(); ++i) curr[i] = (int)i;
+        for (int lvl = 1; lvl <= max_level; ++lvl) {
+            Far::TopologyLevel const& parent = refiner->GetLevel(lvl - 1);
+            Far::TopologyLevel const& child  = refiner->GetLevel(lvl);
+            std::vector<int> next(child.GetNumEdges(), -1);
+            int npe = parent.GetNumEdges();
+            for (int pe = 0; pe < npe; ++pe) {
+                Far::ConstIndexArray ch = parent.GetEdgeChildEdges(pe);
+                for (int i = 0; i < ch.size(); ++i)
+                    next[ch[i]] = curr[pe];
+            }
+            curr.swap(next);
+        }
+        h->edge_origins = std::move(curr);
+    }
+
     delete refiner;
     return h;
 }
@@ -129,6 +217,34 @@ extern "C" void osdc_topology_limit_topology(const osdc_topology_t* t,
     if (face_vert_indices_out)
         std::memcpy(face_vert_indices_out, t->limit_face_indices.data(),
                     t->limit_face_indices.size() * sizeof(int));
+}
+
+extern "C" int osdc_topology_limit_edge_count(const osdc_topology_t* t) {
+    return t ? (int)(t->limit_edge_verts.size() / 2) : 0;
+}
+
+extern "C" void osdc_topology_limit_edges(const osdc_topology_t* t, int* out_verts) {
+    if (t == nullptr || out_verts == nullptr) return;
+    std::memcpy(out_verts, t->limit_edge_verts.data(),
+                t->limit_edge_verts.size() * sizeof(int));
+}
+
+extern "C" void osdc_topology_face_origins(const osdc_topology_t* t, int* out) {
+    if (t == nullptr || out == nullptr) return;
+    std::memcpy(out, t->face_origins.data(),
+                t->face_origins.size() * sizeof(int));
+}
+
+extern "C" void osdc_topology_vert_origins(const osdc_topology_t* t, int* out) {
+    if (t == nullptr || out == nullptr) return;
+    std::memcpy(out, t->vert_origins.data(),
+                t->vert_origins.size() * sizeof(int));
+}
+
+extern "C" void osdc_topology_edge_origins(const osdc_topology_t* t, int* out) {
+    if (t == nullptr || out == nullptr) return;
+    std::memcpy(out, t->edge_origins.data(),
+                t->edge_origins.size() * sizeof(int));
 }
 
 extern "C" void osdc_evaluate(osdc_topology_t* t,

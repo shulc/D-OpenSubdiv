@@ -38,6 +38,22 @@ void osdc_topology_limit_topology(const osdc_topology_t* t,
                                    int* face_vert_counts_out,
                                    int* face_vert_indices_out);
 
+/// Number of edges in the refined limit mesh.
+int  osdc_topology_limit_edge_count(const osdc_topology_t* t);
+
+/// Limit-mesh edge list — 2 limit-vert indices per edge, tightly
+/// packed. Output length = 2 * osdc_topology_limit_edge_count.
+void osdc_topology_limit_edges(const osdc_topology_t* t, int* out_verts);
+
+/// Trace-back arrays — for each limit element, the cage element index
+/// it descended from. -1 means the element was introduced by
+/// subdivision and has no cage counterpart. Match the semantics of
+/// vibe3d's SubpatchTrace.{face,vert,edge}Origin (note: callers may
+/// reinterpret -1 as `uint.max` when storing back into uint[]).
+void osdc_topology_face_origins(const osdc_topology_t* t, int* out_face_origins);
+void osdc_topology_vert_origins(const osdc_topology_t* t, int* out_vert_origins);
+void osdc_topology_edge_origins(const osdc_topology_t* t, int* out_edge_origins);
+
 /// Evaluate the limit-surface positions for the current cage. One
 /// sparse matrix-vector product; safe to call many times per second.
 ///

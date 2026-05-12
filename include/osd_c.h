@@ -57,6 +57,25 @@ void osdc_topology_limit_topology(const osdc_topology_t* t,
                                    int* face_vert_counts_out,
                                    int* face_vert_indices_out);
 
+// Number of edges in the refined (limit) mesh.
+int  osdc_topology_limit_edge_count(const osdc_topology_t* t);
+
+// Copy out the refined-mesh edge list. Each edge contributes two
+// limit-vertex indices to `out_verts` (length 2 * limit_edge_count).
+void osdc_topology_limit_edges(const osdc_topology_t* t, int* out_verts);
+
+// Trace-back arrays — for each limit element, the index of the cage
+// element it descended from. -1 means the element was introduced by
+// subdivision and has no direct counterpart on the cage. All three
+// match the semantics of vibe3d's SubpatchTrace.{face,vert,edge}Origin.
+//
+//   out_face_origins — length osdc_topology_limit_face_count()
+//   out_vert_origins — length osdc_topology_limit_vert_count()
+//   out_edge_origins — length osdc_topology_limit_edge_count()
+void osdc_topology_face_origins(const osdc_topology_t* t, int* out_face_origins);
+void osdc_topology_vert_origins(const osdc_topology_t* t, int* out_vert_origins);
+void osdc_topology_edge_origins(const osdc_topology_t* t, int* out_edge_origins);
+
 // Apply the cached stencil table to `cage_xyz` and write limit-surface
 // vertex positions into `out_xyz`. Both buffers are tightly packed
 // triples (xyz, xyz, ...). One sparse SpMV under the hood — this is
