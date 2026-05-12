@@ -76,6 +76,20 @@ void osdc_topology_face_origins(const osdc_topology_t* t, int* out_face_origins)
 void osdc_topology_vert_origins(const osdc_topology_t* t, int* out_vert_origins);
 void osdc_topology_edge_origins(const osdc_topology_t* t, int* out_edge_origins);
 
+// Number of edges in the INPUT topology (level 0 — the cage that was
+// passed to osdc_topology_create). OpenSubdiv infers cage edges from
+// the face-vertex list; callers that only know the face list don't
+// otherwise have access to OSD's edge enumeration order, which is
+// what `osdc_topology_edge_origins` indexes against.
+int  osdc_topology_input_edge_count(const osdc_topology_t* t);
+
+// Input-edge endpoint pairs — 2 input-vert indices per input edge,
+// tightly packed. Output length = 2 * osdc_topology_input_edge_count.
+// Use this to map an `edge_origins[i]` value (an input-edge index) to
+// a pair of input verts, then look those up in your own cage's edge
+// table if you need a cage-edge index.
+void osdc_topology_input_edges(const osdc_topology_t* t, int* out_verts);
+
 // Apply the cached stencil table to `cage_xyz` and write limit-surface
 // vertex positions into `out_xyz`. Both buffers are tightly packed
 // triples (xyz, xyz, ...). One sparse SpMV under the hood — this is

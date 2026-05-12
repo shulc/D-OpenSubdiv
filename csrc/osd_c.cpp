@@ -38,6 +38,7 @@ struct osdc_topology {
     std::vector<int>          vert_origins;
     std::vector<int>          limit_edge_verts;   // 2 limit-vert idx per edge
     std::vector<int>          edge_origins;
+    std::vector<int>          input_edge_verts;   // 2 input-vert idx per cage edge
 };
 
 extern "C" osdc_topology_t* osdc_topology_create(
@@ -115,6 +116,18 @@ extern "C" osdc_topology_t* osdc_topology_create(
         Far::ConstIndexArray ev = top.GetEdgeVertices(e);
         h->limit_edge_verts.push_back(ev[0]);
         h->limit_edge_verts.push_back(ev[1]);
+    }
+
+    // Input-cage edge endpoints — needed for callers that want to map
+    // `edge_origins[i]` (an input-edge index in OSD's enumeration) back
+    // to an edge index in their own cage's edge table.
+    Far::TopologyLevel const& cage = refiner->GetLevel(0);
+    int neIn = cage.GetNumEdges();
+    h->input_edge_verts.reserve(2 * neIn);
+    for (int e = 0; e < neIn; ++e) {
+        Far::ConstIndexArray ev = cage.GetEdgeVertices(e);
+        h->input_edge_verts.push_back(ev[0]);
+        h->input_edge_verts.push_back(ev[1]);
     }
 
     // ---- Trace-back arrays ----------------------------------------
@@ -245,6 +258,16 @@ extern "C" void osdc_topology_edge_origins(const osdc_topology_t* t, int* out) {
     if (t == nullptr || out == nullptr) return;
     std::memcpy(out, t->edge_origins.data(),
                 t->edge_origins.size() * sizeof(int));
+}
+
+extern "C" int osdc_topology_input_edge_count(const osdc_topology_t* t) {
+    return t ? (int)(t->input_edge_verts.size() / 2) : 0;
+}
+
+extern "C" void osdc_topology_input_edges(const osdc_topology_t* t, int* out_verts) {
+    if (t == nullptr || out_verts == nullptr) return;
+    std::memcpy(out_verts, t->input_edge_verts.data(),
+                t->input_edge_verts.size() * sizeof(int));
 }
 
 extern "C" void osdc_evaluate(osdc_topology_t* t,

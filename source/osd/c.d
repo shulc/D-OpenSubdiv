@@ -54,6 +54,15 @@ void osdc_topology_face_origins(const osdc_topology_t* t, int* out_face_origins)
 void osdc_topology_vert_origins(const osdc_topology_t* t, int* out_vert_origins);
 void osdc_topology_edge_origins(const osdc_topology_t* t, int* out_edge_origins);
 
+/// Number of edges in the input topology (level 0 — the cage that was
+/// passed to osdc_topology_create). Use with osdc_topology_input_edges
+/// to translate an `edge_origins[i]` value back to a cage-edge pair.
+int  osdc_topology_input_edge_count(const osdc_topology_t* t);
+
+/// Input-edge endpoint pairs (2 input-vert indices per input edge,
+/// tightly packed). Length = 2 * osdc_topology_input_edge_count.
+void osdc_topology_input_edges(const osdc_topology_t* t, int* out_verts);
+
 /// Evaluate the limit-surface positions for the current cage. One
 /// sparse matrix-vector product; safe to call many times per second.
 ///
