@@ -11,7 +11,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # small and dependency-free. Apps that want GPU evaluation can flip
 # these on later.
 
-set(NO_OPENGL             ON  CACHE BOOL "" FORCE)
+set(NO_OPENGL             OFF CACHE BOOL "" FORCE)
 set(NO_OPENCL             ON  CACHE BOOL "" FORCE)
 set(NO_CUDA               ON  CACHE BOOL "" FORCE)
 set(NO_PTEX               ON  CACHE BOOL "" FORCE)
@@ -54,7 +54,7 @@ target_include_directories(osdc
 # OpenSubdiv exposes both CPU and Far sub-libs from its add_subdirectory.
 # `osd_static_cpu` already transitively links `osd_static_far`, so a
 # single target_link_libraries entry covers both.
-target_link_libraries(osdc PUBLIC osd_static_cpu)
+target_link_libraries(osdc PUBLIC osd_static_cpu osd_static_gpu)
 
 # Drop the typical GCC pedantic warnings that OpenSubdiv's older C++14
 # code trips on so our build stays clean.
