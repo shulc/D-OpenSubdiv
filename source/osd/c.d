@@ -87,6 +87,28 @@ void osdc_topology_input_edges(const osdc_topology_t* t, int* out_verts);
 /// into un-refined adjacent faces (T-junction widening).
 void osdc_topology_input_edge_children(const osdc_topology_t* t, int* out_verts);
 
+// ---------------------------------------------------------------------------
+// GL evaluator — runs the stencil eval on GPU via transform feedback.
+// Caller supplies the source/destination VBOs; OSD compiles the GLSL
+// kernel at osdc_gl_create time. Requires an active GL 3.3+ context.
+// ---------------------------------------------------------------------------
+
+/// Opaque GL evaluator handle.
+struct osdc_gl_evaluator_t;
+
+/// Compile the GLSL kernel + upload the stencil table to GL TBOs.
+/// Returns null on shader-compile failure (caller falls back to CPU).
+osdc_gl_evaluator_t* osdc_gl_create(const osdc_topology_t* t);
+
+void osdc_gl_destroy(osdc_gl_evaluator_t* e);
+
+/// Run the stencil eval on GPU. `src_vbo` reads cage positions (3
+/// floats per vert), `dst_vbo` receives limit positions. Returns
+/// non-zero on success.
+int  osdc_gl_evaluate(osdc_gl_evaluator_t* e,
+                       uint src_vbo,
+                       uint dst_vbo);
+
 /// Evaluate the limit-surface positions for the current cage. One
 /// sparse matrix-vector product; safe to call many times per second.
 ///

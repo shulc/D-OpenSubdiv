@@ -144,6 +144,44 @@ void osdc_evaluate(osdc_topology_t* t,
                     const float* cage_xyz,
                     float* out_xyz);
 
+// ===========================================================================
+// GPU evaluator — runs the stencil table on the GPU via OpenGL transform
+// feedback. Same math as `osdc_evaluate`, but limit positions land in a
+// GL buffer object (VBO) directly without a CPU round-trip.
+//
+// Caller responsibilities:
+//   * Active GL 3.3+ context on the calling thread for every GL entry
+//     point. The evaluator compiles a GLSL transform-feedback shader at
+//     osdc_gl_create time.
+//   * Source VBO holds tightly-packed XYZ floats for every cage vert
+//     (length = 3 * num_cage_verts floats). Caller fills it with the
+//     current cage positions per frame via glBufferSubData / glMapBuffer.
+//   * Destination VBO must have at least 3 * limit_vert_count floats of
+//     space. The evaluator overwrites those bytes via transform feedback.
+//
+// Typical workflow:
+//   topo = osdc_topology_create(...);
+//   gl   = osdc_gl_create(topo);
+//   // per frame:
+//   glBufferSubData(GL_ARRAY_BUFFER, 0, ..., cage_xyz);
+//   osdc_gl_evaluate(gl, cage_vbo, limit_vbo);
+// ===========================================================================
+typedef struct osdc_gl_evaluator osdc_gl_evaluator_t;
+
+// Compile the GLSL kernel + upload the stencil table to GL texture-buffer
+// objects. Returns NULL on shader-compile failure (caller should fall
+// back to the CPU evaluator).
+osdc_gl_evaluator_t* osdc_gl_create(const osdc_topology_t* t);
+
+void osdc_gl_destroy(osdc_gl_evaluator_t* e);
+
+// Run the stencil eval on GPU. `src_vbo` reads cage positions (3 floats
+// per vert), `dst_vbo` receives limit positions (3 floats per stencil).
+// Returns non-zero on success.
+int  osdc_gl_evaluate(osdc_gl_evaluator_t* e,
+                       unsigned int src_vbo,
+                       unsigned int dst_vbo);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

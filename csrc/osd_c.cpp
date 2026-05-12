@@ -14,6 +14,7 @@
 #include <opensubdiv/far/stencilTableFactory.h>
 #include <opensubdiv/osd/cpuEvaluator.h>
 #include <opensubdiv/osd/bufferDescriptor.h>
+#include <opensubdiv/osd/glXFBEvaluator.h>
 
 #include <cstring>
 #include <vector>
@@ -328,6 +329,76 @@ extern "C" void osdc_topology_input_edge_children(const osdc_topology_t* t, int*
     if (t == nullptr || out_verts == nullptr) return;
     std::memcpy(out_verts, t->input_edge_children.data(),
                 t->input_edge_children.size() * sizeof(int));
+}
+
+// ===========================================================================
+// GL evaluator — see osd_c.h for the workflow contract.
+// ===========================================================================
+
+namespace {
+// Tiny wrapper that lets OSD's templated EvalStencils accept a raw GL
+// buffer name as its src / dst. The templated path only ever calls
+// `BindVBO()` on the buffer object — it doesn't need a constructor,
+// destructor, or any size info.
+struct ExternalVBO {
+    unsigned int vbo;
+    unsigned int BindVBO() const { return vbo; }
+};
+} // namespace
+
+struct osdc_gl_evaluator {
+    OpenSubdiv::Osd::GLStencilTableTBO* table;
+    OpenSubdiv::Osd::GLXFBEvaluator*    evaluator;
+};
+
+extern "C" osdc_gl_evaluator_t* osdc_gl_create(const osdc_topology_t* t) {
+    if (t == nullptr || t->stencil_table == nullptr) return nullptr;
+
+    using namespace OpenSubdiv;
+
+    auto* table = Osd::GLStencilTableTBO::Create(t->stencil_table, nullptr);
+    if (table == nullptr) return nullptr;
+
+    Osd::BufferDescriptor srcDesc(0, 3, 3);
+    Osd::BufferDescriptor dstDesc(0, 3, 3);
+    auto* evaluator = Osd::GLXFBEvaluator::Create(
+        srcDesc, dstDesc,
+        Osd::BufferDescriptor(),  // no u-derivative output
+        Osd::BufferDescriptor()); // no v-derivative output
+    if (evaluator == nullptr) {
+        delete table;
+        return nullptr;
+    }
+
+    auto* h = new osdc_gl_evaluator;
+    h->table     = table;
+    h->evaluator = evaluator;
+    return h;
+}
+
+extern "C" void osdc_gl_destroy(osdc_gl_evaluator_t* e) {
+    if (e == nullptr) return;
+    delete e->evaluator;
+    delete e->table;
+    delete e;
+}
+
+extern "C" int osdc_gl_evaluate(osdc_gl_evaluator_t* e,
+                                 unsigned int src_vbo,
+                                 unsigned int dst_vbo)
+{
+    if (e == nullptr || src_vbo == 0 || dst_vbo == 0) return 0;
+    using namespace OpenSubdiv;
+    ExternalVBO src{src_vbo};
+    ExternalVBO dst{dst_vbo};
+    Osd::BufferDescriptor srcDesc(0, 3, 3);
+    Osd::BufferDescriptor dstDesc(0, 3, 3);
+    return Osd::GLXFBEvaluator::EvalStencils(
+        &src, srcDesc,
+        &dst, dstDesc,
+        e->table,
+        e->evaluator,
+        nullptr) ? 1 : 0;
 }
 
 extern "C" void osdc_evaluate(osdc_topology_t* t,
