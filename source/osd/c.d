@@ -24,6 +24,23 @@ osdc_topology_t* osdc_topology_create(int   num_cage_verts,
                                        const int* face_vert_indices,
                                        int   max_level);
 
+/// Same as osdc_topology_create with optional crease / corner
+/// sharpness arrays. Use SHARPNESS_INFINITE (weight >= 10) on every
+/// edge / vert touching an "un-refined" face to keep it flat while
+/// neighbouring refined faces smooth normally — selective subpatch.
+osdc_topology_t* osdc_topology_create_sharp(
+    int          num_cage_verts,
+    int          num_cage_faces,
+    const int*   face_vert_counts,
+    const int*   face_vert_indices,
+    int          max_level,
+    int          num_creases,
+    const int*   crease_vert_pairs,
+    const float* crease_weights,
+    int          num_corners,
+    const int*   corner_vert_indices,
+    const float* corner_weights);
+
 void osdc_topology_destroy(osdc_topology_t* t);
 
 int  osdc_topology_limit_vert_count (const osdc_topology_t* t);

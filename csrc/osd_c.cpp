@@ -42,12 +42,18 @@ struct osdc_topology {
     std::vector<int>          input_edge_children;// level-1 vert idx per cage edge (edge-point)
 };
 
-extern "C" osdc_topology_t* osdc_topology_create(
-    int        num_cage_verts,
-    int        num_cage_faces,
-    const int* face_vert_counts,
-    const int* face_vert_indices,
-    int        max_level)
+extern "C" osdc_topology_t* osdc_topology_create_sharp(
+    int          num_cage_verts,
+    int          num_cage_faces,
+    const int*   face_vert_counts,
+    const int*   face_vert_indices,
+    int          max_level,
+    int          num_creases,
+    const int*   crease_vert_pairs,
+    const float* crease_weights,
+    int          num_corners,
+    const int*   corner_vert_indices,
+    const float* corner_weights)
 {
     if (num_cage_verts <= 0 || num_cage_faces <= 0 || max_level < 1)
         return nullptr;
@@ -62,6 +68,16 @@ extern "C" osdc_topology_t* osdc_topology_create(
     desc.numFaces           = num_cage_faces;
     desc.numVertsPerFace    = face_vert_counts;
     desc.vertIndicesPerFace = face_vert_indices;
+    if (num_creases > 0 && crease_vert_pairs != nullptr && crease_weights != nullptr) {
+        desc.numCreases               = num_creases;
+        desc.creaseVertexIndexPairs   = crease_vert_pairs;
+        desc.creaseWeights            = crease_weights;
+    }
+    if (num_corners > 0 && corner_vert_indices != nullptr && corner_weights != nullptr) {
+        desc.numCorners               = num_corners;
+        desc.cornerVertexIndices      = corner_vert_indices;
+        desc.cornerWeights            = corner_weights;
+    }
 
     Sdc::SchemeType scheme = Sdc::SCHEME_CATMARK;
     Sdc::Options    sdcOpts;
@@ -220,6 +236,23 @@ extern "C" osdc_topology_t* osdc_topology_create(
 
     delete refiner;
     return h;
+}
+
+// Legacy entry point — no crease / corner sharpness. Forwards to the
+// sharpened variant with empty arrays.
+extern "C" osdc_topology_t* osdc_topology_create(
+    int        num_cage_verts,
+    int        num_cage_faces,
+    const int* face_vert_counts,
+    const int* face_vert_indices,
+    int        max_level)
+{
+    return osdc_topology_create_sharp(
+        num_cage_verts, num_cage_faces,
+        face_vert_counts, face_vert_indices,
+        max_level,
+        0, nullptr, nullptr,
+        0, nullptr, nullptr);
 }
 
 extern "C" void osdc_topology_destroy(osdc_topology_t* t) {

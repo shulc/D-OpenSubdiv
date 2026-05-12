@@ -38,6 +38,37 @@ osdc_topology_t* osdc_topology_create(int num_cage_verts,
                                        const int* face_vert_indices,
                                        int max_level);
 
+// Same as osdc_topology_create, with optional crease/corner sharpness
+// arrays applied to OSD's TopologyDescriptor. Pass num_creases=0 /
+// num_corners=0 to skip either set.
+//
+//   num_creases               — number of sharpened edges
+//   crease_vert_pairs         — 2 * num_creases ints; each pair
+//                               (vA, vB) names a cage edge to crease.
+//                               Pass weights >= 10 for "infinitely
+//                               sharp" (OSD's Sdc::Crease
+//                               SHARPNESS_INFINITE).
+//   crease_weights            — num_creases floats
+//   num_corners               — number of sharpened verts
+//   corner_vert_indices       — num_corners ints
+//   corner_weights            — num_corners floats
+//
+// Used by selective-subpatch callers to "lock" unmarked regions into
+// flat polygons while marked interiors smooth normally — set every
+// edge / vert touching an unmarked face to SHARPNESS_INFINITE.
+osdc_topology_t* osdc_topology_create_sharp(
+    int          num_cage_verts,
+    int          num_cage_faces,
+    const int*   face_vert_counts,
+    const int*   face_vert_indices,
+    int          max_level,
+    int          num_creases,
+    const int*   crease_vert_pairs,
+    const float* crease_weights,
+    int          num_corners,
+    const int*   corner_vert_indices,
+    const float* corner_weights);
+
 void osdc_topology_destroy(osdc_topology_t* t);
 
 // Counts for the refined (limit) mesh. Use to size buffers passed
