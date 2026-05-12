@@ -1,0 +1,23 @@
+{
+    "name": "d-opensubdiv",
+    "description": "D bindings for a thin C shim around Pixar's OpenSubdiv 3.x — Catmull-Clark stencil evaluation on the CPU.",
+    "license": "Apache-2.0",
+    "authors": ["Alexander Shagarov"],
+
+    "targetType": "staticLibrary",
+
+    "sourcePaths": ["source"],
+    "importPaths": ["source"],
+
+    "preBuildCommands-posix": [
+        "cmake -S \"$PACKAGE_DIR\" -B \"$PACKAGE_DIR/build\" -DCMAKE_BUILD_TYPE=Release",
+        "cmake --build \"$PACKAGE_DIR/build\" -j --target osdc"
+    ],
+
+    "lflags-posix": [
+        "-L$PACKAGE_DIR/build",
+        "-L$PACKAGE_DIR/build/extern/OpenSubdiv/opensubdiv"
+    ],
+
+    "libs-posix": ["osdc", "osdCPU", "stdc++", "m"]
+}

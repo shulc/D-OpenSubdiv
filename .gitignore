@@ -1,0 +1,12 @@
+build/
+.dub/
+*.o
+*.a
+*.so
+*.dylib
+docs/
+docs.json
+__dummy.html
+d-opensubdiv
+*-test-library
+*-test-unittest
