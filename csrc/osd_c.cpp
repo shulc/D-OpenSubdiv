@@ -16,6 +16,18 @@
 #include <opensubdiv/osd/bufferDescriptor.h>
 #include <opensubdiv/osd/glXFBEvaluator.h>
 
+// OSD's bundled glLoader resolves GL function pointers via dlsym /
+// glXGetProcAddress into its own internal namespace, separate from
+// whatever loader the application uses (vibe3d uses bindbc-opengl).
+// Must be called once before any OSD GL entry point — otherwise the
+// internal function-pointer table is all-null and the first GL call
+// segfaults.
+namespace OpenSubdiv {
+namespace internal {
+namespace GLLoader {
+extern bool applicationInitializeGL();
+}}}
+
 #include <cstring>
 #include <vector>
 
@@ -355,6 +367,14 @@ extern "C" osdc_gl_evaluator_t* osdc_gl_create(const osdc_topology_t* t) {
     if (t == nullptr || t->stencil_table == nullptr) return nullptr;
 
     using namespace OpenSubdiv;
+
+    // Lazy one-time init of OSD's GL function-pointer table.
+    static bool s_gl_loader_init = false;
+    if (!s_gl_loader_init) {
+        if (!OpenSubdiv::internal::GLLoader::applicationInitializeGL())
+            return nullptr;
+        s_gl_loader_init = true;
+    }
 
     auto* table = Osd::GLStencilTableTBO::Create(t->stencil_table, nullptr);
     if (table == nullptr) return nullptr;
