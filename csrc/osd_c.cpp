@@ -66,7 +66,14 @@ extern "C" osdc_topology_t* osdc_topology_create(
     Sdc::Options    sdcOpts;
     // Edge-only boundary interpolation matches the default DCC behaviour
     // for "Hard Crease at Corner" + "Crease on Boundary"-style edges.
-    sdcOpts.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_EDGE_ONLY);
+    // EDGE_AND_CORNER pins boundary corner verts to their cage
+    // positions — needed by callers that feed OSD a SUBSET of a
+    // larger cage and then stitch the OSD output back against
+    // un-subdivided faces of the original cage (selective subdivide).
+    // EDGE_ONLY would smooth boundary verts and the stitched edges
+    // would no longer line up. For closed-manifold cages (the
+    // common case) the option has no effect — there's no boundary.
+    sdcOpts.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_EDGE_AND_CORNER);
 
     using Factory = Far::TopologyRefinerFactory<Far::TopologyDescriptor>;
     Far::TopologyRefiner* refiner = Factory::Create(
