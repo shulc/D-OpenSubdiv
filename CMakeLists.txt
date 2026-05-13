@@ -64,6 +64,9 @@ target_include_directories(osdc
 # single target_link_libraries entry covers both.
 target_link_libraries(osdc PUBLIC osd_static_cpu osd_static_gpu)
 
-# Drop the typical GCC pedantic warnings that OpenSubdiv's older C++14
-# code trips on so our build stays clean.
-target_compile_options(osdc PRIVATE -Wall -Wno-deprecated-declarations)
+# Drop the typical warnings that OpenSubdiv's older C++14 code trips on.
+if(MSVC)
+    target_compile_options(osdc PRIVATE /W3 /wd4996 /wd4244 /wd4267)
+else()
+    target_compile_options(osdc PRIVATE -Wall -Wno-deprecated-declarations)
+endif()
