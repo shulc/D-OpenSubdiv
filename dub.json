@@ -9,7 +9,12 @@
     "sourcePaths": ["source"],
     "importPaths": ["source"],
 
-    "preBuildCommands-posix": [
+    "preBuildCommands-osx": [
+        "cd \"$PACKAGE_DIR\" && git submodule update --init --recursive --quiet",
+        "xcrun -sdk macosx cmake -S \"$PACKAGE_DIR\" -B \"$PACKAGE_DIR/build\" -DCMAKE_BUILD_TYPE=Release",
+        "cmake --build \"$PACKAGE_DIR/build\" -j --target osdc"
+    ],
+    "preBuildCommands-linux": [
         "cd \"$PACKAGE_DIR\" && git submodule update --init --recursive --quiet",
         "cmake -S \"$PACKAGE_DIR\" -B \"$PACKAGE_DIR/build\" -DCMAKE_BUILD_TYPE=Release",
         "cmake --build \"$PACKAGE_DIR/build\" -j --target osdc"

@@ -38,6 +38,14 @@ set(BUILD_SHARED_LIBS     OFF CACHE BOOL "" FORCE)
 # call — sidesteps the empty-export trap without patching upstream.
 function(install)
 endfunction()
+
+# Apple Clang 21+ (macOS 26 Tahoe): libc++ top-level headers (cassert,
+# memory, …) moved into the SDK; CLT's usr/include/c++/v1 only carries
+# internal __xxx files. Inject the SDK path so the compiler finds them.
+if(APPLE AND CMAKE_OSX_SYSROOT)
+    add_compile_options(-isystem ${CMAKE_OSX_SYSROOT}/usr/include/c++/v1)
+endif()
+
 add_subdirectory(extern/OpenSubdiv EXCLUDE_FROM_ALL)
 # Restore install() — caller of this top-level project may want it.
 # (CMake's function shadowing is scope-local, so this just clears the
