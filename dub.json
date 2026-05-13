@@ -25,5 +25,7 @@
         "-L$PACKAGE_DIR/build/extern/OpenSubdiv/opensubdiv"
     ],
 
-    "libs-posix": ["osdc", "osdCPU", "osdGPU", "GL", "stdc++", "m"]
+    "libs-linux": ["osdc", "osdCPU", "osdGPU", "GL", "stdc++", "m"],
+    "libs-osx":   ["osdc", "osdCPU", "osdGPU", "c++", "m"],
+    "frameworks":  ["OpenGL"]
 }
