@@ -31,11 +31,12 @@
     ],
     "lflags-windows": [
         "/LIBPATH:$PACKAGE_DIR/build/Release",
-        "/LIBPATH:$PACKAGE_DIR/build/extern/OpenSubdiv/opensubdiv/Release"
+        "$PACKAGE_DIR/build/extern/OpenSubdiv/opensubdiv/Release/osdCPU.lib",
+        "$PACKAGE_DIR/build/extern/OpenSubdiv/opensubdiv/Release/osdGPU.lib"
     ],
 
     "libs-linux":   ["osdc", "osdCPU", "osdGPU", "GL", "stdc++", "m"],
     "libs-osx":     ["osdc", "osdCPU", "osdGPU", "c++", "m"],
-    "libs-windows": ["osdc", "osdCPU", "osdGPU", "opengl32"],
+    "libs-windows": ["osdc", "opengl32"],
     "frameworks":   ["OpenGL"]
 }
