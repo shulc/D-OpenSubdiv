@@ -182,6 +182,83 @@ int  osdc_gl_evaluate(osdc_gl_evaluator_t* e,
                        unsigned int src_vbo,
                        unsigned int dst_vbo);
 
+// ===========================================================================
+// LIMIT-SURFACE patch evaluator — feature-adaptive patches with Gregory-
+// basis end-caps. Unlike the stencil path above (which produces a finite
+// set of refined VERTICES), this evaluates the analytic Catmull-Clark
+// LIMIT SURFACE at arbitrary (u,v) parameters on each ptex face. That's
+// what a smooth, controllable-density tessellator needs: pick any
+// sampling grid you like over the (ptex_face, u, v) domain and read back
+// exact limit positions + normals.
+//
+// Workflow:
+//   patch = osdc_patch_create(...);        // once — builds adaptive patch table
+//   // per geometry change:
+//   osdc_patch_refine(patch, cage_xyz);    // refines control points + Gregory local points
+//   // for each tessellation sample:
+//   osdc_patch_evaluate(patch, f, u, v, pos, nrm);
+//   osdc_patch_destroy(patch);
+//
+// The tessellation domain is the set of "ptex faces": each quad cage
+// face is one ptex face with (u,v) in [0,1]^2; an N-gon cage face splits
+// into N ptex faces (one per corner). osdc_patch_ptex_to_base_face maps
+// a ptex face back to the cage face it came from.
+// ===========================================================================
+typedef struct osdc_patch osdc_patch_t;
+
+// Build a feature-adaptive patch table (Gregory-basis end-caps,
+// inf-sharp patches enabled) from a polygon cage with optional
+// crease / corner sharpness. `isolation_level` is the adaptive
+// isolation depth around extraordinary vertices and creases (>= 1;
+// 3 is a good default). Returns NULL on failure.
+//
+//   crease_vert_pairs   — 2 * num_creases ints, each (vA,vB) an edge
+//   crease_weights      — num_creases floats (>= 10 ≈ infinitely sharp)
+//   corner_vert_indices — num_corners ints
+//   corner_weights      — num_corners floats
+osdc_patch_t* osdc_patch_create(int          num_cage_verts,
+                                 int          num_cage_faces,
+                                 const int*   face_vert_counts,
+                                 const int*   face_vert_indices,
+                                 int          num_creases,
+                                 const int*   crease_vert_pairs,
+                                 const float* crease_weights,
+                                 int          num_corners,
+                                 const int*   corner_vert_indices,
+                                 const float* corner_weights,
+                                 int          isolation_level);
+
+// Number of ptex faces — the size of the tessellation domain. Each is
+// a unit (u,v) square. Iterate [0, count) as the outer tessellation
+// loop.
+int  osdc_patch_ptex_face_count(const osdc_patch_t* p);
+
+// Base (cage) face index that the given ptex face belongs to. A quad
+// cage face owns exactly one ptex face; an N-gon owns N consecutive
+// ptex faces (its corners). Returns -1 if ptex_face is out of range.
+int  osdc_patch_ptex_to_base_face(const osdc_patch_t* p, int ptex_face);
+
+// Refresh the evaluator's control-point buffer for new cage positions.
+// Copies the `num_cage_verts` cage positions in, interpolates them to
+// every adaptive refinement level, then computes the Gregory-basis
+// local points. MUST be called once per geometry change before any
+// osdc_patch_evaluate.
+//
+//   cage_xyz — tightly-packed [x0,y0,z0, ...], length 3 * num_cage_verts
+void osdc_patch_refine(osdc_patch_t* p, const float* cage_xyz);
+
+// Evaluate the limit surface at (ptex_face, u, v). Writes the position
+// to out_pos3 and the unit surface normal to out_normal3 (either may be
+// NULL). On an invalid patch handle, writes zeros. u,v are in [0,1].
+void osdc_patch_evaluate(const osdc_patch_t* p,
+                          int    ptex_face,
+                          float  u,
+                          float  v,
+                          float* out_pos3,
+                          float* out_normal3);
+
+void osdc_patch_destroy(osdc_patch_t* p);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

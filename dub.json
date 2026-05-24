@@ -1,10 +1,8 @@
 {
     "name": "d-opensubdiv",
-    "description": "D bindings for a thin C shim around Pixar's OpenSubdiv 3.x — Catmull-Clark stencil evaluation on the CPU.",
+    "description": "D bindings for a thin C shim around Pixar's OpenSubdiv 3.x — Catmull-Clark stencil evaluation + feature-adaptive Gregory-patch limit evaluation.",
     "license": "Apache-2.0",
     "authors": ["Alexander Shagarov"],
-
-    "targetType": "staticLibrary",
 
     "sourcePaths": ["source"],
     "importPaths": ["source"],
@@ -35,8 +33,27 @@
         "$PACKAGE_DIR/build/extern/OpenSubdiv/opensubdiv/Release/osdGPU.lib"
     ],
 
-    "libs-linux":   ["osdc", "osdCPU", "osdGPU", "GL", "stdc++", "m"],
+"libs-linux":   ["osdc", "osdCPU", "osdGPU", "GL", "stdc++", "m"],
     "libs-osx":     ["osdc", "osdCPU", "osdGPU", "c++", "m"],
     "libs-windows": ["osdc", "opengl32"],
-    "frameworks":   ["OpenGL"]
+    "frameworks":   ["OpenGL"],
+
+    "configurations": [
+        {
+            "name": "library",
+            "targetType": "staticLibrary"
+        },
+        {
+            "name": "cube_subdiv",
+            "targetType": "executable",
+            "targetName": "cube_subdiv",
+            "mainSourceFile": "examples/cube_subdiv.d"
+        },
+        {
+            "name": "patch_eval",
+            "targetType": "executable",
+            "targetName": "patch_eval",
+            "mainSourceFile": "examples/patch_eval.d"
+        }
+    ]
 }

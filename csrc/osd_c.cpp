@@ -451,3 +451,247 @@ extern "C" void osdc_evaluate(osdc_topology_t* t,
         /*start=*/ 0,
         /*end=*/   n);
 }
+
+// ===========================================================================
+// Limit-surface patch evaluator — feature-adaptive patches, Gregory-basis
+// end-caps. See osd_c.h for the workflow contract.
+// ===========================================================================
+
+#include <opensubdiv/far/patchTable.h>
+#include <opensubdiv/far/patchTableFactory.h>
+#include <opensubdiv/far/patchMap.h>
+#include <opensubdiv/far/primvarRefiner.h>
+#include <opensubdiv/far/ptexIndices.h>
+
+#include <cmath>
+
+namespace {
+// Minimal primvar element for PrimvarRefiner — 3 floats, the only two
+// operations the refiner ever invokes (Clear / AddWithWeight). Stored
+// densely so a std::vector<OsdVertex3> aliases a tightly-packed float
+// buffer (POD, no padding).
+struct OsdVertex3 {
+    void Clear(void* = nullptr) { p[0] = p[1] = p[2] = 0.0f; }
+    void AddWithWeight(OsdVertex3 const& src, float w) {
+        p[0] += w * src.p[0];
+        p[1] += w * src.p[1];
+        p[2] += w * src.p[2];
+    }
+    float p[3];
+};
+} // namespace
+
+struct osdc_patch {
+    int                       num_cage_verts;
+    int                       n_refined;     // refiner->GetNumVerticesTotal()
+    int                       n_local;       // patch table local (Gregory) points
+    Far::TopologyRefiner*     refiner;
+    Far::PatchTable*          patch_table;
+    Far::PatchMap*            patch_map;
+    Far::PtexIndices*         ptex_indices;
+    std::vector<int>          ptex_to_base;  // ptex face -> cage face id
+    // Reusable control-point buffer: [0 .. n_refined) refined verts then
+    // [n_refined .. n_refined+n_local) Gregory local points. 3 floats each.
+    std::vector<float>        cv;
+};
+
+extern "C" osdc_patch_t* osdc_patch_create(
+    int          num_cage_verts,
+    int          num_cage_faces,
+    const int*   face_vert_counts,
+    const int*   face_vert_indices,
+    int          num_creases,
+    const int*   crease_vert_pairs,
+    const float* crease_weights,
+    int          num_corners,
+    const int*   corner_vert_indices,
+    const float* corner_weights,
+    int          isolation_level)
+{
+    if (num_cage_verts <= 0 || num_cage_faces <= 0 || isolation_level < 1)
+        return nullptr;
+    if (face_vert_counts == nullptr || face_vert_indices == nullptr)
+        return nullptr;
+
+    // ---- Topology descriptor (same crease/corner wiring as the
+    //      stencil-path factory) ------------------------------------
+    Far::TopologyDescriptor desc;
+    desc.numVertices        = num_cage_verts;
+    desc.numFaces           = num_cage_faces;
+    desc.numVertsPerFace    = face_vert_counts;
+    desc.vertIndicesPerFace = face_vert_indices;
+    if (num_creases > 0 && crease_vert_pairs != nullptr && crease_weights != nullptr) {
+        desc.numCreases             = num_creases;
+        desc.creaseVertexIndexPairs = crease_vert_pairs;
+        desc.creaseWeights          = crease_weights;
+    }
+    if (num_corners > 0 && corner_vert_indices != nullptr && corner_weights != nullptr) {
+        desc.numCorners          = num_corners;
+        desc.cornerVertexIndices = corner_vert_indices;
+        desc.cornerWeights       = corner_weights;
+    }
+
+    Sdc::SchemeType scheme = Sdc::SCHEME_CATMARK;
+    Sdc::Options    sdcOpts;
+    sdcOpts.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_EDGE_AND_CORNER);
+
+    using Factory = Far::TopologyRefinerFactory<Far::TopologyDescriptor>;
+    Far::TopologyRefiner* refiner =
+        Factory::Create(desc, Factory::Options(scheme, sdcOpts));
+    if (refiner == nullptr) return nullptr;
+
+    // ---- Feature-adaptive refinement around extraordinary verts /
+    //      creases. useInfSharpPatch makes inf-sharp creases produce
+    //      sharp patches instead of isolating forever. -----------------
+    Far::TopologyRefiner::AdaptiveOptions adOpts(isolation_level);
+    adOpts.useInfSharpPatch = true;
+    refiner->RefineAdaptive(adOpts);
+
+    // ---- Patch table with Gregory-basis end-caps ------------------
+    Far::PatchTableFactory::Options o;
+    o.SetEndCapType(Far::PatchTableFactory::Options::ENDCAP_GREGORY_BASIS);
+    o.useInfSharpPatch = true;
+    Far::PatchTable* pt = Far::PatchTableFactory::Create(*refiner, o);
+    if (pt == nullptr) {
+        delete refiner;
+        return nullptr;
+    }
+
+    Far::PatchMap*    pmap = new Far::PatchMap(*pt);
+    Far::PtexIndices* ptex = new Far::PtexIndices(*refiner);
+
+    osdc_patch_t* h = new osdc_patch;
+    h->num_cage_verts = num_cage_verts;
+    h->n_refined      = refiner->GetNumVerticesTotal();
+    h->n_local        = pt->GetNumLocalPoints();
+    h->refiner        = refiner;
+    h->patch_table    = pt;
+    h->patch_map      = pmap;
+    h->ptex_indices   = ptex;
+    h->cv.assign((size_t)3 * (h->n_refined + h->n_local), 0.0f);
+
+    // ---- ptex face -> base (cage) face map ------------------------
+    // Ptex faces are numbered by walking level-0 faces in order: a
+    // quad contributes exactly 1 ptex face, an N-gon (N != 4) splits
+    // into N ptex faces (one per corner). This matches OSD's own ptex
+    // enumeration (PtexIndices), so FindPatch's ptex id lines up.
+    {
+        Far::TopologyLevel const& cage = refiner->GetLevel(0);
+        int nf = cage.GetNumFaces();
+        h->ptex_to_base.reserve(nf);
+        for (int f = 0; f < nf; ++f) {
+            int nv = cage.GetFaceVertices(f).size();
+            int n  = (nv == 4) ? 1 : nv;   // quad -> 1, n-gon -> n
+            for (int i = 0; i < n; ++i)
+                h->ptex_to_base.push_back(f);
+        }
+    }
+
+    return h;
+}
+
+extern "C" int osdc_patch_ptex_face_count(const osdc_patch_t* p) {
+    return p ? (int)p->ptex_to_base.size() : 0;
+}
+
+extern "C" int osdc_patch_ptex_to_base_face(const osdc_patch_t* p, int ptex_face) {
+    if (p == nullptr) return -1;
+    if (ptex_face < 0 || ptex_face >= (int)p->ptex_to_base.size()) return -1;
+    return p->ptex_to_base[ptex_face];
+}
+
+extern "C" void osdc_patch_refine(osdc_patch_t* p, const float* cage_xyz) {
+    if (p == nullptr || cage_xyz == nullptr) return;
+    if (p->cv.empty()) return;
+
+    // Stage cage positions into the head of the cv buffer.
+    OsdVertex3* verts = reinterpret_cast<OsdVertex3*>(p->cv.data());
+    for (int i = 0; i < p->num_cage_verts; ++i) {
+        verts[i].p[0] = cage_xyz[3*i+0];
+        verts[i].p[1] = cage_xyz[3*i+1];
+        verts[i].p[2] = cage_xyz[3*i+2];
+    }
+
+    // Interpolate level by level. PrimvarRefiner::Interpolate(level,
+    // src, dst) reads level-(level-1) verts and writes level's verts;
+    // advance src/dst pointers by each level's vertex count so the one
+    // flat buffer holds every level back-to-back.
+    Far::PrimvarRefiner primvar(*p->refiner);
+    OsdVertex3* src = verts;
+    OsdVertex3* dst = src + p->refiner->GetLevel(0).GetNumVertices();
+    int maxLevel = p->refiner->GetMaxLevel();
+    for (int lvl = 1; lvl <= maxLevel; ++lvl) {
+        primvar.Interpolate(lvl, src, dst);
+        src = dst;
+        dst += p->refiner->GetLevel(lvl).GetNumVertices();
+    }
+
+    // Gregory-basis (and other) local points sit right after the
+    // refined verts. ComputeLocalPointValues(src, dst) takes the full
+    // refined-vert buffer as src and appends the derived local points.
+    if (p->n_local > 0) {
+        // ComputeLocalPointValues<T> drives a stencil table whose element
+        // type T must expose Clear()/AddWithWeight() — raw float won't do
+        // in OSD 3.7. Feed it our OsdVertex3 (3-float POD) so the local
+        // points land contiguously after the refined verts in `cv`.
+        p->patch_table->ComputeLocalPointValues(
+            verts,
+            verts + p->n_refined);
+    }
+}
+
+extern "C" void osdc_patch_evaluate(const osdc_patch_t* p,
+                                     int    ptex_face,
+                                     float  u,
+                                     float  v,
+                                     float* out_pos3,
+                                     float* out_normal3)
+{
+    if (out_pos3)    { out_pos3[0]    = out_pos3[1]    = out_pos3[2]    = 0.0f; }
+    if (out_normal3) { out_normal3[0] = out_normal3[1] = out_normal3[2] = 0.0f; }
+    if (p == nullptr || p->cv.empty()) return;
+
+    Far::PatchMap::Handle const* handle =
+        p->patch_map->FindPatch(ptex_face, (double)u, (double)v);
+    if (handle == nullptr) return;
+
+    // Plenty of headroom — Gregory-basis patches use 20 control points;
+    // regular B-spline patches use 16. 24 covers everything OSD emits.
+    float pWeights[24], duWeights[24], dvWeights[24];
+    p->patch_table->EvaluateBasis(*handle, u, v, pWeights, duWeights, dvWeights);
+
+    Far::ConstIndexArray cvs = p->patch_table->GetPatchVertices(*handle);
+    const float* cv = p->cv.data();
+
+    float pos[3] = {0,0,0};
+    float du[3]  = {0,0,0};
+    float dv[3]  = {0,0,0};
+    for (int i = 0; i < cvs.size(); ++i) {
+        const float* c = cv + 3 * cvs[i];
+        float wp = pWeights[i], wu = duWeights[i], wv = dvWeights[i];
+        pos[0] += wp * c[0]; pos[1] += wp * c[1]; pos[2] += wp * c[2];
+        du[0]  += wu * c[0]; du[1]  += wu * c[1]; du[2]  += wu * c[2];
+        dv[0]  += wv * c[0]; dv[1]  += wv * c[1]; dv[2]  += wv * c[2];
+    }
+
+    if (out_pos3) { out_pos3[0] = pos[0]; out_pos3[1] = pos[1]; out_pos3[2] = pos[2]; }
+
+    if (out_normal3) {
+        // normal = normalize(du x dv)
+        float nx = du[1]*dv[2] - du[2]*dv[1];
+        float ny = du[2]*dv[0] - du[0]*dv[2];
+        float nz = du[0]*dv[1] - du[1]*dv[0];
+        float len = std::sqrt(nx*nx + ny*ny + nz*nz);
+        if (len > 1e-12f) { nx /= len; ny /= len; nz /= len; }
+        out_normal3[0] = nx; out_normal3[1] = ny; out_normal3[2] = nz;
+    }
+}
+
+extern "C" void osdc_patch_destroy(osdc_patch_t* p) {
+    if (p == nullptr) return;
+    delete p->patch_table;
+    delete p->patch_map;
+    delete p->ptex_indices;
+    delete p->refiner;
+    delete p;
+}

@@ -1,8 +1,10 @@
 # D-OpenSubdiv
 
-D bindings for a thin C shim around Pixar's **OpenSubdiv** 3.x, scoped to
-the "build topology + stencil table once, evaluate limit positions per
-frame" workflow that drives interactive subdivision-surface previews.
+D bindings for a thin C shim around Pixar's **OpenSubdiv** 3.x. Two
+workflows are exposed: (1) "build topology + stencil table once, evaluate
+limit positions per frame" for interactive subdivision-surface previews,
+and (2) feature-adaptive **Gregory-patch** evaluation of the analytic
+limit surface (position + normal) at arbitrary (u, v).
 
 ## Layout
 
@@ -12,7 +14,8 @@ csrc/osd_c.cpp             — implementation, wraps Far + Osd::CpuEvaluator
 source/osd/c.d             — D extern(C) bindings, 1-to-1 with osd_c.h
 CMakeLists.txt             — builds libosdc.a + vendored OpenSubdiv
 extern/OpenSubdiv          — git submodule, pinned to v3_7_0
-examples/cube_subdiv.d     — smoke test
+examples/cube_subdiv.d     — smoke test: uniform CC stencil eval
+examples/patch_eval.d      — smoke test: Gregory-patch limit eval
 ```
 
 ## First build
@@ -25,25 +28,30 @@ dub build
 The `preBuildCommands-posix` hook in `dub.json` invokes CMake on the
 submodule + shim before `dub` compiles the D side, so a plain
 `dub build` is enough. Output: `libd-opensubdiv.a` (D bindings,
-package root) + `build/libosdc.a` and
-`build/extern/OpenSubdiv/opensubdiv/libosdCPU.a` (native).
+package root) + `build/libosdc.a` and the vendored OpenSubdiv libs
+under `build/extern/OpenSubdiv/opensubdiv/`.
 
-## Smoke test
+## Smoke tests
+
+The examples are `dub` executable configurations, so `dub` runs the
+CMake prebuild and links the full native lib set (`libs-posix`) for you —
+no hand-rolled `rdmd -L=...` invocation:
 
 ```sh
-rdmd -Isource \
-     -L=build/libosdc.a \
-     -L=build/extern/OpenSubdiv/opensubdiv/libosdCPU.a \
-     -L=-lstdc++ -L=-lm \
-     examples/cube_subdiv.d
+dub run --config=cube_subdiv    # uniform Catmull-Clark stencil eval
+dub run --config=patch_eval     # feature-adaptive Gregory-patch limit eval
 ```
 
-Expected:
+`cube_subdiv` expected:
 ```
 limit verts = 98, faces = 96
 limit bbox  = [-0.878, 0.878] x [-0.878, 0.878] x [-0.878, 0.878]
 OK
 ```
+
+`patch_eval` evaluates a unit cube's limit surface at patch (u, v) for a
+smooth and a fully-creased case and prints positions + normals, ending in
+`OK`.
 
 ## Consuming from another dub project
 
@@ -55,32 +63,43 @@ In the consumer's `dub.json` add (assuming sibling checkouts):
 }
 ```
 
-…then `import osd.c;` and call `osdc_topology_create` / `osdc_evaluate`.
+…then `import osd.c;`. dub resolves the dependency to the `library`
+configuration (a static library).
 
 ## API in one breath
 
 ```d
 import osd.c;
 
+// (1) Uniform refinement + stencil table — hot per-frame eval.
 auto t = osdc_topology_create(numCageVerts, numCageFaces,
                               faceVertCounts.ptr, faceVertIndices.ptr,
                               maxLevel);
 scope (exit) osdc_topology_destroy(t);
-
 auto limit = new float[](3 * osdc_topology_limit_vert_count(t));
+osdc_evaluate(t, cageXyz.ptr, limit.ptr);   // re-call each drag frame
 
-// Hot path: re-call every drag frame with new cage positions.
-osdc_evaluate(t, cageXyz.ptr, limit.ptr);
+// (2) Feature-adaptive Gregory-patch limit eval (position + normal).
+auto p = osdc_patch_create(numCageVerts, numCageFaces,
+                           faceVertCounts.ptr, faceVertIndices.ptr,
+                           0, null, null, 0, null, null, /*isolation*/ 3);
+scope (exit) osdc_patch_destroy(p);
+osdc_patch_refine(p, cageXyz.ptr);
+float[3] pos, nrm;
+osdc_patch_evaluate(p, ptexFace, u, v, pos.ptr, nrm.ptr);
 ```
 
 ## Scope
 
 * Catmull-Clark only (Loop / Bilinear can be exposed trivially —
   hard-coded scheme in `osd_c.cpp`).
-* Uniform refinement (one stencil table, level N → level N positions).
-  No feature-adaptive / Gregory patches yet.
-* CPU evaluator only; OpenSubdiv's GL/CUDA/Metal backends are disabled
-  in the vendored build (see `CMakeLists.txt`).
+* Two evaluation paths:
+  * Uniform refinement → one stencil table (level N → level N positions),
+    run on the CPU (`osdc_evaluate`) or on the GPU via GL transform
+    feedback (`osdc_gl_*`).
+  * Feature-adaptive patches with Gregory-basis end-caps for analytic
+    limit-surface evaluation + normals (`osdc_patch_*`, CPU). Crease /
+    corner sharpness is honoured on both paths.
 
 ## License
 

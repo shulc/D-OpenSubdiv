@@ -118,3 +118,57 @@ int  osdc_gl_evaluate(osdc_gl_evaluator_t* e,
 void osdc_evaluate(osdc_topology_t* t,
                     const float* cage_xyz,
                     float* out_xyz);
+
+// ---------------------------------------------------------------------------
+// Limit-surface patch evaluator — feature-adaptive patches with Gregory-
+// basis end-caps. Evaluates the analytic Catmull-Clark limit surface at
+// arbitrary (ptex_face, u, v) parameters — the foundation for a smooth,
+// controllable-density tessellator. See osd_c.h for the full contract.
+// ---------------------------------------------------------------------------
+
+/// Opaque handle to an adaptive patch table + map + ptex index +
+/// reusable control-point buffer. Create via osdc_patch_create, free
+/// via osdc_patch_destroy.
+struct osdc_patch_t;
+
+/// Build a feature-adaptive patch table (Gregory-basis end-caps,
+/// inf-sharp patches on) from a polygon cage with optional crease /
+/// corner sharpness. `isolation_level` is the adaptive isolation depth
+/// (>= 1; 3 is a good default). Returns null on failure.
+osdc_patch_t* osdc_patch_create(int          num_cage_verts,
+                                int          num_cage_faces,
+                                const int*   face_vert_counts,
+                                const int*   face_vert_indices,
+                                int          num_creases,
+                                const int*   crease_vert_pairs,
+                                const float* crease_weights,
+                                int          num_corners,
+                                const int*   corner_vert_indices,
+                                const float* corner_weights,
+                                int          isolation_level);
+
+/// Number of ptex faces — the tessellation domain size. Each is a unit
+/// (u,v) square; iterate [0, count) as the outer tessellation loop.
+int  osdc_patch_ptex_face_count(const osdc_patch_t* p);
+
+/// Base (cage) face index a ptex face belongs to. Quad -> 1 ptex face,
+/// N-gon -> N consecutive ptex faces. Returns -1 if out of range.
+int  osdc_patch_ptex_to_base_face(const osdc_patch_t* p, int ptex_face);
+
+/// Refresh the control-point buffer for new cage positions: copies the
+/// cage verts in, interpolates to every adaptive level, then computes
+/// the Gregory local points. Call once per geometry change before
+/// evaluating. `cage_xyz` length = 3 * num_cage_verts.
+void osdc_patch_refine(osdc_patch_t* p, const float* cage_xyz);
+
+/// Evaluate the limit surface at (ptex_face, u, v). Writes position to
+/// out_pos3 and the unit normal to out_normal3 (either may be null).
+/// Writes zeros on an invalid patch handle. u, v in [0,1].
+void osdc_patch_evaluate(const osdc_patch_t* p,
+                         int    ptex_face,
+                         float  u,
+                         float  v,
+                         float* out_pos3,
+                         float* out_normal3);
+
+void osdc_patch_destroy(osdc_patch_t* p);

@@ -10,3 +10,5 @@ __dummy.html
 d-opensubdiv
 *-test-library
 *-test-unittest
+/cube_subdiv
+/patch_eval
