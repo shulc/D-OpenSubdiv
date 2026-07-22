@@ -33,6 +33,20 @@ extern bool applicationInitializeGL();
 
 using namespace OpenSubdiv;
 
+// Map the C-shim boundary enum (osdc_vtx_boundary_t, matching values) to
+// OSD's Sdc::Options::VtxBoundaryInterpolation. Unknown values fall back to
+// EDGE_AND_CORNER (the historical default) so a stale caller can't silently
+// float the boundary.
+static Sdc::Options::VtxBoundaryInterpolation
+osdc_map_vtx_boundary(int vtx_boundary) {
+    switch (vtx_boundary) {
+        case 0:  return Sdc::Options::VTX_BOUNDARY_NONE;
+        case 1:  return Sdc::Options::VTX_BOUNDARY_EDGE_ONLY;
+        case 2:  return Sdc::Options::VTX_BOUNDARY_EDGE_AND_CORNER;
+        default: return Sdc::Options::VTX_BOUNDARY_EDGE_AND_CORNER;
+    }
+}
+
 struct osdc_topology {
     int                       num_cage_verts;
     int                       limit_vert_count;
@@ -66,7 +80,8 @@ extern "C" osdc_topology_t* osdc_topology_create_sharp(
     const float* crease_weights,
     int          num_corners,
     const int*   corner_vert_indices,
-    const float* corner_weights)
+    const float* corner_weights,
+    int          vtx_boundary)
 {
     if (num_cage_verts <= 0 || num_cage_faces <= 0 || max_level < 1)
         return nullptr;
@@ -94,16 +109,18 @@ extern "C" osdc_topology_t* osdc_topology_create_sharp(
 
     Sdc::SchemeType scheme = Sdc::SCHEME_CATMARK;
     Sdc::Options    sdcOpts;
-    // Edge-only boundary interpolation matches the default DCC behaviour
-    // for "Hard Crease at Corner" + "Crease on Boundary"-style edges.
-    // EDGE_AND_CORNER pins boundary corner verts to their cage
-    // positions — needed by callers that feed OSD a SUBSET of a
-    // larger cage and then stitch the OSD output back against
-    // un-subdivided faces of the original cage (selective subdivide).
-    // EDGE_ONLY would smooth boundary verts and the stitched edges
-    // would no longer line up. For closed-manifold cages (the
-    // common case) the option has no effect — there's no boundary.
-    sdcOpts.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_EDGE_AND_CORNER);
+    // Boundary interpolation rule is caller-chosen (see osdc_vtx_boundary_t
+    // in osd_c.h):
+    //   EDGE_ONLY       — smooth (moving) open-mesh boundary; the standard
+    //                     whole-mesh Catmull-Clark rule DCCs use.
+    //   EDGE_AND_CORNER — pins boundary corner verts to their cage position;
+    //                     needed by callers that feed OSD a SUBSET of a
+    //                     larger cage and stitch the output back against
+    //                     un-subdivided faces (selective subdivide), where a
+    //                     smoothed corner would detach the seam.
+    // For closed-manifold cages (the common case) the option has no effect —
+    // there is no boundary.
+    sdcOpts.SetVtxBoundaryInterpolation(osdc_map_vtx_boundary(vtx_boundary));
 
     using Factory = Far::TopologyRefinerFactory<Far::TopologyDescriptor>;
     Far::TopologyRefiner* refiner = Factory::Create(
@@ -265,7 +282,8 @@ extern "C" osdc_topology_t* osdc_topology_create(
         face_vert_counts, face_vert_indices,
         max_level,
         0, nullptr, nullptr,
-        0, nullptr, nullptr);
+        0, nullptr, nullptr,
+        OSDC_VTX_BOUNDARY_EDGE_AND_CORNER);
 }
 
 extern "C" void osdc_topology_destroy(osdc_topology_t* t) {

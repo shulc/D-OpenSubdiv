@@ -19,6 +19,28 @@ extern "C" {
 
 typedef struct osdc_topology osdc_topology_t;
 
+// Vertex boundary interpolation rule — mirrors OpenSubdiv's
+// Sdc::Options::VtxBoundaryInterpolation (identical integer values). Picks
+// how boundary (hole-rim) vertices of an OPEN cage behave under Catmull-
+// Clark. Has no effect on closed manifolds — they have no boundary.
+//
+//   NONE            — boundary verts are not interpolated (rarely wanted).
+//   EDGE_ONLY       — boundary follows a smooth B-spline curve; even corner
+//                     verts MOVE (a valence-2 rim corner lands at
+//                     3/4*V + 1/8*(N1+N2)). This is the standard DCC whole-
+//                     mesh Catmull-Clark rule on open meshes.
+//   EDGE_AND_CORNER — boundary edges are sharpened AND rim corner verts are
+//                     PINNED to their cage position. Needed when a caller
+//                     feeds OSD a SUBSET of a larger cage and stitches the
+//                     refined output back against un-refined faces of the
+//                     original cage (selective subdivide): pinned corners
+//                     keep the refined/un-refined seam aligned.
+typedef enum {
+    OSDC_VTX_BOUNDARY_NONE            = 0,
+    OSDC_VTX_BOUNDARY_EDGE_ONLY       = 1,
+    OSDC_VTX_BOUNDARY_EDGE_AND_CORNER = 2
+} osdc_vtx_boundary_t;
+
 // Build a topology from a polygon mesh and pre-compute a stencil table
 // that maps cage vertices to subdivision-level `max_level` limit
 // vertices. Polygon sizes are arbitrary (n-gons supported); the
@@ -31,6 +53,10 @@ typedef struct osdc_topology osdc_topology_t;
 //                          length = sum(face_vert_counts)
 //   max_level            — subdivision depth (>= 1)
 //
+// Uses the OSDC_VTX_BOUNDARY_EDGE_AND_CORNER boundary rule (corner-pinned)
+// for backward compatibility; call osdc_topology_create_sharp to choose a
+// different boundary rule (e.g. EDGE_ONLY for a smooth whole-mesh open boundary).
+//
 // Returns NULL if topology construction fails (degenerate input).
 osdc_topology_t* osdc_topology_create(int num_cage_verts,
                                        int num_cage_faces,
@@ -40,7 +66,9 @@ osdc_topology_t* osdc_topology_create(int num_cage_verts,
 
 // Same as osdc_topology_create, with optional crease/corner sharpness
 // arrays applied to OSD's TopologyDescriptor. Pass num_creases=0 /
-// num_corners=0 to skip either set.
+// num_corners=0 to skip either set. `vtx_boundary` selects the boundary
+// interpolation rule (one of osdc_vtx_boundary_t) — EDGE_ONLY for a smooth
+// (moving) open-mesh boundary, EDGE_AND_CORNER to pin rim corners.
 //
 //   num_creases               — number of sharpened edges
 //   crease_vert_pairs         — 2 * num_creases ints; each pair
@@ -67,7 +95,8 @@ osdc_topology_t* osdc_topology_create_sharp(
     const float* crease_weights,
     int          num_corners,
     const int*   corner_vert_indices,
-    const float* corner_weights);
+    const float* corner_weights,
+    int          vtx_boundary);
 
 void osdc_topology_destroy(osdc_topology_t* t);
 

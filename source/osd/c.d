@@ -10,6 +10,21 @@ module osd.c;
 
 extern (C) @nogc nothrow:
 
+/// Vertex boundary interpolation rule — mirrors OpenSubdiv's
+/// Sdc::Options::VtxBoundaryInterpolation (identical integer values).
+/// Selects how boundary (hole-rim) verts of an OPEN cage behave under
+/// Catmull-Clark; no effect on closed manifolds.
+///
+///   EdgeOnly      — smooth (moving) boundary B-spline; the standard DCC
+///                   whole-mesh rule (rim corner → 3/4*V + 1/8*(N1+N2)).
+///   EdgeAndCorner — boundary edges sharpened AND rim corners pinned to
+///                   their cage position; needed by selective-subdivide
+///                   callers that stitch a refined subset back against
+///                   un-refined faces of a larger cage.
+enum OSDC_VTX_BOUNDARY_NONE            = 0;
+enum OSDC_VTX_BOUNDARY_EDGE_ONLY       = 1;
+enum OSDC_VTX_BOUNDARY_EDGE_AND_CORNER = 2;
+
 /// Opaque handle to a topology + cached stencil table. Created via
 /// osdc_topology_create, freed via osdc_topology_destroy. All other
 /// entry points are tolerant of NULL.
@@ -28,6 +43,9 @@ osdc_topology_t* osdc_topology_create(int   num_cage_verts,
 /// sharpness arrays. Use SHARPNESS_INFINITE (weight >= 10) on every
 /// edge / vert touching an "un-refined" face to keep it flat while
 /// neighbouring refined faces smooth normally — selective subpatch.
+/// `vtx_boundary` is one of OSDC_VTX_BOUNDARY_* — EDGE_ONLY for a
+/// smooth (moving) open-mesh boundary, EDGE_AND_CORNER to pin rim
+/// corners (selective-subdivide stitching).
 osdc_topology_t* osdc_topology_create_sharp(
     int          num_cage_verts,
     int          num_cage_faces,
@@ -39,7 +57,8 @@ osdc_topology_t* osdc_topology_create_sharp(
     const float* crease_weights,
     int          num_corners,
     const int*   corner_vert_indices,
-    const float* corner_weights);
+    const float* corner_weights,
+    int          vtx_boundary);
 
 void osdc_topology_destroy(osdc_topology_t* t);
 
