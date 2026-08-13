@@ -67,6 +67,11 @@ target_link_libraries(osdc PUBLIC osd_static_cpu osd_static_gpu)
 # Drop the typical warnings that OpenSubdiv's older C++14 code trips on.
 if(MSVC)
     target_compile_options(osdc PRIVATE /W3 /wd4996 /wd4244 /wd4267)
+    # OpenSubdiv's sdc/loopScheme.h uses M_PI, which MSVC's <cmath> only
+    # defines under _USE_MATH_DEFINES. The header reaches osdc's translation
+    # unit via the feature-adaptive includes (patch_eval work); GCC/Clang
+    # expose M_PI unconditionally, so this is MSVC-only.
+    target_compile_definitions(osdc PRIVATE _USE_MATH_DEFINES)
 else()
     target_compile_options(osdc PRIVATE -Wall -Wno-deprecated-declarations)
 endif()
